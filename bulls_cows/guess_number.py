@@ -1,21 +1,26 @@
 import random
+import collections
 
 
 class Game:
     def __init__(self) -> None:
-        self.candidates = []
+        self.guess_cnt = 0
         # generate 0123 to 0987
-        self.candidates += ["0" + str(i) for i in range(100, 999)]
+        self.candidates = ["0" + str(i) for i in range(100, 999)]
         # generate 1234 to 9876
         self.candidates += [str(i) for i in range(1000, 9999)]
-        # remove numbers with duplicated digits 
+        # remove numbers with duplicated digits
         self.candidates = [s for s in self.candidates if len(set(s)) == 4]
-        # generate random number to use as our target 
-        self.ans = random.sample(self.candidates, 1)[0]
-        # self.ans = '2035'
-        self.prev_guesses = []  # save guess, save clue 
+        # generate random number to use as our target
+        self.target = random.sample(self.candidates, 1)[0]
+        # self.target = "1730"
+        self.prev_guesses = []  # save guess, save response
+        # generate a list of all possible outcomes
+        self.responses = []
+        for i in range(5):
+            self.responses.append(f"{i}A{4-i}B")
 
-    def check(self, guess:str, target: str) -> str:
+    def check(self, guess: str, target: str) -> str:
         num_a = 0
         num_b = 0
         for i in range(len(guess)):
@@ -25,55 +30,48 @@ class Game:
                 num_b += 1
         return f"{num_a}A{num_b}B"
 
-    def learn(self, guess: str, clue: str) -> None:
-        num_a, num_b = int(clue[0]), int(clue[2])
+    def prune(self, guess: str, response: str) -> None:
+        num_a, num_b = int(response[0]), int(response[2])
 
         # if none of the digit matches:
         if num_a == 0 and num_b == 0:
-            lst = []
-            for num in self.candidates:
-                if (
-                    len(set(guess) & set(num)) == 0
-                ):  # only keep those that do NOT overlap
-                    lst.append(num)
-            self.candidates = lst
-            return lst
-        
-        # extra logic 2, check that our current guess is consistent with previous guess 
-        candidate_remove = set()
-        for candidate in self.candidates: 
-            for prev_guess, prev_clue in self.prev_guesses:
-                if self.check(candidate, prev_guess) != prev_clue:
-                    candidate_remove.add(candidate)
-                    break 
-        self.candidates = [num for num in self.candidates if num not in candidate_remove]
-        
+            self.candidates = [
+                cand for cand in self.candidates if len(set(guess) & set(cand)) == 0
+            ]
 
-        # extra logic 1, check previous guesses, guess = '1A1B'
-        for i in range(len(self.prev_guesses)):
-            prev_guess, prev_clue = self.prev_guesses[i][0], self.prev_guesses[i][1] 
-            # check if 3 digits are the same 
-            if len(set(prev_guess) & set(guess)) == 3:
-                prev_num_a_b = int(prev_clue[0]) + int(prev_clue[2])
-                num_a_b = int(guess[0]) + int(guess[2])
-
-                if num_a_b + 1 == prev_num_a_b:
-                    # exclude new number 
-                    new_num = set(guess) - set(prev_guess)
-                    assert len(new_num) == 1 and type(new_num) == str
-                    new_num = new_num.pop() 
-                    self.candidates = [num for num in self.candidates if new_num not in num]
-
-                elif num_a_b - 1 == prev_num_a_b:
-                    # include old number 
-                    old_num = set(prev_guess) - set(guess)
-                    assert len(old_num) == 1 and type(old_num) == str
-                    old_num = old_num.pop() 
-                    self.candidates = [num for num in self.candidates if old_num in num]
-
+        # prune the size of the solution space based on our guess and response
         self.candidates = [
-            num for num in self.candidates if num != guess
-        ]  # remove the previous guess
+            cand for cand in self.candidates if self.check(guess, cand) == response
+        ]
+
+        # # extra logic 1, check previous guesses, guess = '1A1B'
+        # for i in range(len(self.prev_guesses)):
+        #     prev_guess, prev_response = self.prev_guesses[i][0], self.prev_guesses[i][1]
+        #     # check if 3 digits are the same
+        #     if len(set(prev_guess) & set(guess)) == 3:
+        #         prev_num_a_b = int(prev_response[0]) + int(prev_response[2])
+        #         num_a_b = int(response[0]) + int(response[2])
+
+        #         new_num = (set(guess) - set(prev_guess)).pop()
+        #         old_num = (set(prev_guess) - set(guess)).pop()
+
+        #         if num_a_b + 1 == prev_num_a_b:
+        #             # exclude new number and include old number
+        #             self.candidates = [
+        #                 num
+        #                 for num in self.candidates
+        #                 if new_num not in num and old_num in num
+        #             ]
+
+        #         elif num_a_b - 1 == prev_num_a_b:
+        #             # include new number and exclude old number
+        #             self.candidates = [
+        #                 num
+        #                 for num in self.candidates
+        #                 if new_num in num and old_num not in num
+        #             ]
+
+        # main logic
         self.candidates = self.process_a(num_a, num_b, guess)
         return
 
@@ -148,71 +146,62 @@ class Game:
                     lst_b.append(candidate)
         return lst_b
 
-    def play_game(self):
-        guess = ""
-        print("num ", self.ans)
-        guess_cnt = 0
+    def play_game(self) -> int:
         while True:
-            guess = input("Your guess: ")
-            if guess == "tell me":
-                print("correct number", self.ans)
-                continue
-            if guess not in self.candidates:
-                if not guess_cnt < 2:
-                    print('Bad guess, guess is not in candidate list')
-                    continue 
+            print(f"Target number: {self.target}")
+            # return a guess
+            if self.guess_cnt == 0:  # our first guess is always fixed
+                # guess = "0123"
+                guess = random.sample(self.candidates, 1)[0]
+            else:
+                print(
+                    "Random 10 candidates: ",
+                    random.sample(self.candidates, min(10, len(self.candidates))),
+                )
+                # guess = input("Your guess: ")
+                guess = random.sample(self.candidates, 1)[0]
+            self.guess_cnt += 1
 
-            if guess == self.ans:
-                print("YOU WINNN!!!")
+            response = self.check(guess, self.target)
+            print(f"Guess: {guess}, response = {response}")
+
+            # prune the solution space size
+            print(f"Previous size: {len(self.candidates)}")
+            self.prune(guess, response)
+            print(f"Current size: {len(self.candidates)}")
+
+            # save guess and response
+            self.prev_guesses.append([guess, response])
+            print("Guesses history", self.prev_guesses)
+
+            print("Number of guesses ", self.guess_cnt)
+
+            if guess == self.target:
+                print("YOU WIN!!")
                 break
-            print("actual number", self.ans)
-
-            clue = self.check(guess, self.ans)
-            # clue = input("clue is ")
-            print("clue: ", clue)
-
-            # learn and prune candidates
-            self.learn(guess, clue)
-
-            # save guess and clue
-            print("Previous guesses", self.prev_guesses)
-            self.prev_guesses.append([guess, clue])
-
-            print("Number of candidates", len(self.candidates))
-            print(
-                "Random 10 candidates: ",
-                random.sample(self.candidates, min(10, len(self.candidates))),
-            )
-            guess_cnt += 1
-            if guess_cnt > 100:
-                print("you lost, more than 100 guesses is not allowed")
-                break
-            print("Number of gueses ", guess_cnt)
             print()
-
-    def bench_mark(self, num_iter=10000):
-        num_guesses = [] 
-        for i in range(num_iter):
-            g = Game() 
-            guess_cnt = 0 
-            while True:
-                if guess_cnt == 0:
-                    guess = '0123'
-                elif guess_cnt == 1:
-                    guess = '4567'
-                else:
-                    guess = random.sample(g.candidates, 1)[0]
-                guess_cnt += 1 
-                if guess == g.ans:
-                    num_guesses.append(guess_cnt)
-                    print(f'Finished {i} run. Took {guess_cnt} gueses')
-                    break 
-                clue = g.check(guess, g.ans)
-                g.learn(guess, clue)
-        print('Average number of guesses: ', 1.0 * sum(num_guesses) / len(num_guesses))
+        return self.guess_cnt
 
 
-# num_to_guess = input('Number to guess: ')
-g = Game()
+def bench_mark(num_iter=500):
+    history = []
+    for i in range(num_iter):
+        g = Game()
+        guess_cnt = g.play_game()
+        print(f"Game {i}', {guess_cnt} guesses")
+        print()
+        history.append(guess_cnt)
+    counter = collections.Counter(history)
+    for num_guess in range(10):
+        if num_guess in counter:
+            count = counter[num_guess]
+            print(
+                f"# of guesses: {num_guess}, count: {count}, probability: {100. * count / num_iter:.2f}%"
+            )
+    print(f"Number of Games: {num_iter}")
+    print(f"Average number of guesses: {sum(history) / num_iter:.2f}")
+
+
+# g = Game()
 # g.play_game()
-g.bench_mark(5000)
+bench_mark(num_iter=10001)
