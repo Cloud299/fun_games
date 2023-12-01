@@ -124,4 +124,4 @@ def bench_mark(num_iter=500):
 
 # num_to_guess = input('Number to guess: ')
 # g = Game(); g.play_game()
-bench_mark(51)
+bench_mark(501)
